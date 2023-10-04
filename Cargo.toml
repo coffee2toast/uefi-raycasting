@@ -3,9 +3,8 @@ name = "raycasting"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
 log = "0.4.20"
+tiny-skia = { version = "0.11.2", default-features = false, features = ["no-std-float"] }
 uefi = "0.24.0"
 uefi-services = "0.21.0"
