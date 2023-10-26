@@ -3,10 +3,10 @@
 
 use core::slice;
 
-use tiny_skia::{Color, FillRule, Paint, PathBuilder, Transform};
+use tiny_skia::{Color, FillRule, Paint, PathBuilder, Transform, Pixmap};
 use uefi::{
     prelude::*,
-    proto::console::{gop::GraphicsOutput, text::Input},
+    proto::console::{gop::{GraphicsOutput, BltOp, BltPixel, BltRegion}, text::Input},
     table::boot::{OpenProtocolAttributes, OpenProtocolParams, ScopedProtocol},
 };
 
@@ -31,9 +31,6 @@ fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
     }
     .unwrap();
     let (width, height) = gop.current_mode_info().resolution();
-    let mut fb = gop.frame_buffer();
-    let slice = unsafe { slice::from_raw_parts_mut(fb.as_mut_ptr(), fb.size()) };
-    let mut pixmap = tiny_skia::PixmapMut::from_bytes(slice, width as u32, height as u32).unwrap();
 
     let mut paint = Paint::default();
     paint.set_color_rgba8(39, 174, 96, 255);
@@ -49,14 +46,23 @@ fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
     pb.close();
     let path = pb.finish().unwrap();
 
-    pixmap.fill(Color::BLACK);
-    pixmap.fill_path(
-        &path,
-        &paint,
-        FillRule::Winding,
-        Transform::from_translate(mid_x, mid_y),
-        None,
-    );
-
-    loop {}
+    let mut loop_count = 0;
+    let mut pixmap = Pixmap::new(width as u32, height as u32).unwrap();
+    loop {
+        loop_count += 10;
+        pixmap.fill(Color::BLACK);
+        pixmap.fill_path(
+            &path,
+            &paint,
+            FillRule::Winding,
+            Transform::from_translate(((mid_x + loop_count as f32) as usize % width) as f32, mid_y),
+            None,
+        );
+        let pixmap_data = pixmap.data();
+        let pixmap_data_ptr = pixmap.data().as_ptr();
+        let pixel_data: *const BltPixel = unsafe { core::mem::transmute(pixmap_data_ptr) };                         // evil type cast bit level hack
+        let pixel_data_slice = unsafe { slice::from_raw_parts(pixel_data, pixmap_data.len() / 4) };    // what the fuck?
+        let op = BltOp::BufferToVideo { buffer: pixel_data_slice, src: BltRegion::Full, dest: (0, 0), dims: (width, height) };
+        gop.blt(op).unwrap();
+    }
 }
